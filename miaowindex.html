@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Miaow · 治癒音浪</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+    
+    .app-bg { 
+      background: linear-gradient(180deg, #f5f9e8 0%, #ffffff 42%, #e1f3f8 100%); 
+      width: 100%; height: 100%; position: relative;
+    }
+
+    .view-section {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; visibility: hidden; transition: opacity 1s ease; z-index: 1;
+    }
+    .view-section.is-active { opacity: 1; visibility: visible; z-index: 10; }
+
+    /* Logo 呼吸 */
+    .logo-anim { animation: logoBreath 3s ease-in-out infinite; }
+    @keyframes logoBreath { 0%, 100% { opacity: 0.2; transform: scale(1); } 50% { opacity: 0.75; transform: scale(1.03); } }
+    .line-text { display: block; min-height: 1.6em; opacity: 0; transition: opacity 1s ease; }
+    .line-text.visible { opacity: 1; }
+
+    /* 圖標基礎 */
+    .sound-item { cursor: pointer; transition: opacity 0.5s ease; width: 100%; max-width: 155px; margin: 0 auto; }
+    .sound-item img { width: 100%; height: auto; display: block; }
+    .sound-item.is-selected { opacity: 0.45; }
+
+    /* 波紋容器 */
+    .wave-wrapper { width: 100%; height: 35vh; position: relative; margin: 10px 0; }
+    canvas { width: 100%; height: 100%; }
+
+    /* 播放控制 */
+    .play-control { width: 56px; height: 56px; border-radius: 50%; background: #b8d4ea; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; }
+
+    /* 混音頁網格 */
+    .mixer-grid { display: flex; justify-content: center; gap: 35px; width: 100%; max-width: 900px; flex-wrap: wrap; margin-bottom: 20px; }
+    .mix-control { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 145px; }
+    
+    /* 音量滑塊 */
+    .volume-slider { -webkit-appearance: none; width: 100px; height: 4px; background: #e1f3f8; border-radius: 2px; outline: none; }
+    .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: white; border: 2px solid #b8d4ea; border-radius: 50%; cursor: pointer; }
+
+    /* 導航按鈕形態 */
+    .nav-btn { 
+      background: rgba(255, 255, 255, 0.3); border: 1px solid rgba(184, 212, 234, 0.4); 
+      color: #b8d4ea; padding: 10px 45px; border-radius: 12px; font-size: 24px; 
+      letter-spacing: 4px; transition: all 0.6s ease; min-width: 160px; text-align: center;
+    }
+    .action-btn { opacity: 0.2; pointer-events: none; }
+    .action-btn.active { opacity: 1; border-color: #b8d4ea; pointer-events: auto; cursor: pointer; }
+    
+    /* 固定模式選項按鈕 */
+    .option-btn { 
+      border: 1px solid #b8d4ea; color: #b8d4ea; transition: all 0.3s ease; 
+      background: rgba(255, 255, 255, 0.6); border-radius: 12px; padding: 8px 24px; font-size: 14px; text-align: center;
+    }
+    .option-btn.active { background: #b8d4ea; color: white; }
+  </style>
+</head>
+<body>
+
+  <div class="app-bg">
+    <section id="view-intro" class="view-section">
+      <div class="logo-anim mb-4"><img src="LOGO.png" alt="Logo" class="max-w-[65vh]"></div>
+      <div id="typewriter" class="text-[#788a94] italic text-lg text-center px-6">
+        <span class="line-text" id="l1"></span><span class="line-text" id="l2"></span><span class="line-text" id="l3"></span>
+      </div>
+    </section>
+
+    <section id="view-mode" class="view-section flex-row gap-[10vw]">
+      <button onclick="switchView('view-fixed')"><img src="btn_fixed.png" class="w-56 md:w-72"></button>
+      <button onclick="switchView('view-free')"><img src="btn_free.png" class="w-56 md:w-72"></button>
+    </section>
+
+    <section id="view-fixed" class="view-section !justify-start pt-20">
+      <div class="flex gap-4 mb-10 z-50">
+        <button id="btn-meditation" onclick="selectFixedTrack('meditation', this)" class="option-btn active">MEDITATION<br>冥 想</button>
+        <button onclick="selectFixedTrack('sleep', this)" class="option-btn">SLEEP<br>睡 眠</button>
+        <button onclick="selectFixedTrack('decompression', this)" class="option-btn">DECOMPRESSION<br>解 壓</button>
+      </div>
+      <div class="wave-wrapper"><canvas id="waveCanvas"></canvas></div>
+      <div class="flex flex-col items-center gap-8 mt-6">
+        <div class="play-control" onclick="toggleFixedPlay()">
+          <svg id="play-icon" class="w-8 h-8 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="pause-icon" class="w-8 h-8 fill-current hidden" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </div>
+        <button onclick="stopAllAndRestart()" class="text-[#9aa8b0] text-[10px] tracking-widest uppercase">← BACK</button>
+      </div>
+    </section>
+
+    <section id="view-free" class="view-section">
+      <div class="w-full max-w-[650px] px-10">
+        <div class="flex items-center gap-3 mb-12">
+          <div class="w-3.5 h-3.5 bg-[#b8d4ea] rounded-full"></div>
+          <h2 class="text-[#b8d4ea] text-[20px] tracking-widest uppercase">Select Cat Sounds</h2>
+        </div>
+        <div class="grid grid-cols-3 gap-x-8 gap-y-12">
+          <div class="sound-item" onclick="handleCatSelect(this, 'kneading')"><img src="icon_kneading.png"></div>
+          <div class="sound-item" onclick="handleCatSelect(this, 'nuzzling')"><img src="icon_nuzzling.png"></div>
+          <div class="sound-item" onclick="handleCatSelect(this, 'affectionate')"><img src="icon_affectionate.png"></div>
+          <div class="sound-item" onclick="handleCatSelect(this, 'grooming')"><img src="icon_grooming.png"></div>
+          <div class="sound-item" onclick="handleCatSelect(this, 'eating')"><img src="icon_eating.png"></div>
+          <div class="sound-item" onclick="handleCatSelect(this, 'petting')"><img src="icon_petting.png"></div>
+        </div>
+        <div class="flex flex-col items-center gap-6 mt-16">
+          <button id="step1-next" onclick="switchView('view-background')" class="nav-btn action-btn">NEXT</button>
+          <button onclick="switchView('view-mode')" class="text-[#9aa8b0] text-[10px] tracking-widest uppercase">← BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-background" class="view-section">
+      <div class="w-full max-w-[800px] px-10">
+        <div class="flex items-center gap-3 mb-12">
+          <div class="w-3.5 h-3.5 bg-[#b8d4ea] rounded-full"></div>
+          <h2 class="text-[#b8d4ea] text-[20px] tracking-widest uppercase">Select Background Sound</h2>
+        </div>
+        <div class="grid grid-cols-4 gap-x-6 gap-y-12">
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'rain')"><img src="icon_rain.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'wind')"><img src="icon_wind.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'fire')"><img src="icon_fire.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'pebbles')"><img src="icon_pebbles.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'thunderstorm')"><img src="icon_thunderstorm.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'bowl')"><img src="icon_bowl.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'page')"><img src="icon_page.png"></div>
+          <div class="sound-item" onclick="handleBgMultiSelect(this, 'writing')"><img src="icon_writing.png"></div>
+        </div>
+        <div class="flex justify-center gap-12 items-center mt-16">
+          <button onclick="switchView('view-free')" class="nav-btn">BACK</button>
+          <button id="bg-ok-btn" onclick="initFinalMixer()" class="nav-btn action-btn">OK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-final" class="view-section !justify-start pt-20">
+      <div id="mixer-container" class="mixer-grid"></div>
+      <div class="wave-wrapper"><canvas id="finalWave"></canvas></div>
+      <div class="flex justify-center gap-10 items-center mt-6">
+        <button onclick="goBackToBackground()" class="nav-btn">BACK</button>
+        <button onclick="stopAllAndRestart()" class="nav-btn">RESTART</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const LINES = ["Write down what you want to express and your anxieties.", "It's okay if the handwriting is messy;", "feel free to doodle randomly as well!"];
+    let audioCtx, analyser, dataArray;
+    let selectedCat = null, selectedBgs = [];
+    let mixerTracks = [], fixedAudio = new Audio(), isFixedPlaying = false;
+
+    // 自動解鎖邏輯
+    window.addEventListener('mousedown', function() {
+        if (!audioCtx) unlockAudio();
+    }, { once: false }); 
+
+    async function unlockAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            analyser.connect(audioCtx.destination);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+        }
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+    }
+
+    function switchView(id) {
+      document.querySelectorAll('.view-section').forEach(s => s.classList.remove('is-active'));
+      document.getElementById(id).classList.add('is-active');
+      if (id === 'view-fixed') initCanvas('waveCanvas');
+    }
+
+    // --- 固定模式 (循環播放已開啟) ---
+    function selectFixedTrack(name, btn) {
+      document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      fixedAudio.src = `${name}.mp3`;
+      fixedAudio.loop = true; // 強制循環
+      if (isFixedPlaying) fixedAudio.play();
+    }
+
+    function toggleFixedPlay() {
+      if (fixedAudio.paused) {
+        if (!fixedAudio.src) selectFixedTrack('meditation', document.getElementById('btn-meditation'));
+        fixedAudio.loop = true; // 強制循環
+        if (!fixedAudio.sourceNode && audioCtx) {
+            fixedAudio.sourceNode = audioCtx.createMediaElementSource(fixedAudio);
+            fixedAudio.sourceNode.connect(analyser);
+        }
+        fixedAudio.play(); isFixedPlaying = true;
+        document.getElementById('play-icon').classList.add('hidden');
+        document.getElementById('pause-icon').classList.remove('hidden');
+        drawWave('waveCanvas');
+      } else {
+        fixedAudio.pause(); isFixedPlaying = false;
+        document.getElementById('play-icon').classList.remove('hidden');
+        document.getElementById('pause-icon').classList.add('hidden');
+      }
+    }
+
+    // --- 自由模式 ---
+    function handleCatSelect(el, id) {
+      document.querySelectorAll('#view-free .sound-item').forEach(i => i.classList.remove('is-selected'));
+      el.classList.add('is-selected');
+      selectedCat = id;
+      document.getElementById('step1-next').classList.add('active');
+    }
+
+    function handleBgMultiSelect(el, id) {
+      if (el.classList.contains('is-selected')) {
+        el.classList.remove('is-selected');
+        selectedBgs = selectedBgs.filter(i => i !== id);
+      } else if (selectedBgs.length < 2) {
+        el.classList.add('is-selected');
+        selectedBgs.push(id);
+      }
+      document.getElementById('bg-ok-btn').classList.toggle('active', selectedBgs.length > 0);
+    }
+
+    function initFinalMixer() {
+      switchView('view-final');
+      const container = document.getElementById('mixer-container');
+      container.innerHTML = ''; mixerTracks = [];
+      [selectedCat, ...selectedBgs].forEach(id => {
+        if (!id) return;
+        const trackObj = createMixerTrack(id);
+        container.appendChild(trackObj.ui);
+        mixerTracks.push(trackObj);
+      });
+      initCanvas('finalWave');
+      drawWave('finalWave');
+    }
+
+    // --- 混音頁面軌道 (循環播放已開啟) ---
+    function createMixerTrack(id) {
+      const audio = new Audio(`${id}.mp3`); 
+      audio.loop = true; // 強制循環
+      const source = audioCtx.createMediaElementSource(audio);
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0.5;
+      source.connect(gainNode).connect(analyser);
+      audio.play();
+
+      const div = document.createElement('div');
+      div.className = 'mix-control';
+      div.innerHTML = `<div class="sound-item"><img src="icon_${id}.png"></div>
+                       <input type="range" class="volume-slider" min="0" max="1" step="0.01" value="0.5">`;
+      div.querySelector('input').oninput = function() { gainNode.gain.value = this.value; };
+      return { audio, ui: div };
+    }
+
+    function goBackToBackground() {
+      mixerTracks.forEach(t => t.audio.pause());
+      switchView('view-background');
+    }
+
+    // --- 波形繪製 ---
+    const POINT_COUNT = 160;
+    let smoothedArray = new Array(POINT_COUNT).fill(0);
+
+    function initCanvas(id) {
+      const cvs = document.getElementById(id);
+      const dpr = window.devicePixelRatio || 1;
+      cvs.width = cvs.offsetWidth * dpr;
+      cvs.height = cvs.offsetHeight * dpr;
+      cvs.getContext('2d').scale(dpr, dpr);
+    }
+
+    function drawWave(id) {
+      const cvs = document.getElementById(id);
+      if (!cvs || !document.getElementById(cvs.parentElement.parentElement.id).classList.contains('is-active')) return;
+      const ctx = cvs.getContext('2d'), w = cvs.width / (window.devicePixelRatio || 1), h = cvs.height / (window.devicePixelRatio || 1);
+      ctx.clearRect(0, 0, w, h);
+      if(analyser) {
+          analyser.getByteFrequencyData(dataArray);
+          ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#b8d4ea';
+          for (let i = 0; i < POINT_COUNT; i++) {
+            const x = (i / (POINT_COUNT - 1)) * w;
+            const dataIdx = Math.floor(Math.abs(i - POINT_COUNT/2) / (POINT_COUNT/2) * (dataArray.length * 0.5));
+            smoothedArray[i] += (dataArray[dataIdx] - smoothedArray[i]) * 0.15;
+            const mask = Math.exp(-Math.pow((i / (POINT_COUNT - 1)) * 2 - 1, 2) / (2 * 0.3 * 0.3));
+            const y = (h/2) + (i % 2 === 0 ? -1 : 1) * (smoothedArray[i]/255) * (h*0.6) * mask;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+      }
+      requestAnimationFrame(() => drawWave(id));
+    }
+
+    function stopAllAndRestart() { location.reload(); }
+
+    async function runTypewriter() {
+      switchView('view-intro');
+      for (let j = 0; j < LINES.length; j++) {
+        const el = document.getElementById(`l${j+1}`);
+        el.classList.add('visible'); 
+        for (let i = 0; i <= LINES[j].length; i++) {
+          el.textContent = LINES[j].slice(0, i);
+          await new Promise(r => setTimeout(r, 25));
+        }
+        await new Promise(r => setTimeout(r, 400));
+      }
+      setTimeout(() => switchView('view-mode'), 1200);
+    }
+
+    window.onload = () => {
+      if (sessionStorage.getItem('hasVisited')) switchView('view-mode');
+      else { runTypewriter(); sessionStorage.setItem('hasVisited', 'true'); }
+    };
+  </script>
+</body>
+</html>
